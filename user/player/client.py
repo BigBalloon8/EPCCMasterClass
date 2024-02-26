@@ -1,20 +1,19 @@
 import socket
 from multiprocessing import Queue
-from message_handler import ...
 
-def setup_client(send_queue: Queue, recv_queue:Queue):
+def setup_client(send_queue: Queue, recv_queue:Queue, port=54321):
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket.bind(('0.0.0.0', port))
     host = '127.0.0.1'
     port = 12345
     client_socket.connect((host, port))
     try:
         while True:
-            if not send_queue.empty():
-                message = send_queue.get()
-                client_socket.sendall(message)
-                data = client_socket.recv(1024)
-                response = data.decode('utf-8')
-                recv_queue.put(response)
+            message = send_queue.get()
+            client_socket.sendall(message.encode())
+            data = client_socket.recv(1024)
+            response = data.decode('utf-8')
+            recv_queue.put(response)
     except Exception as e:
         client_socket.close()
         raise e

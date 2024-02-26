@@ -1,7 +1,7 @@
-from .client import setup_client
+from client import setup_client
 import time
 from multiprocessing import Queue, Process
-import numpy as np
+import json
 
 """
 example_user_info = {
@@ -13,48 +13,72 @@ example_user_info = {
 """
 
 MOVES = {
-            "up": np.array([-1, 0]),
-            "down": np.array([1,0 ]),
-            "left": np.array([0,-1]),
-            "right": np.array([1,0])
+            "up":    [0, -1],
+            "down":  [0, 1],
+            "left":  [-1, 0],
+            "right": [1, 0]
         }
 
 class API:
-    def __init__(self, username:str = None, verbose = 0):
+    def __init__(self, username:str = None, verbose = 0, port=54321):
         # TODO check vaild username
         self.send_q = Queue()
         self.recv_q = Queue()
-        client = Process(target=setup_client, args=(self.send_q, self.recv_q))
+        client = Process(target=setup_client, args=(self.send_q, self.recv_q, port))
         client.start()
 
         self.send_q.put(f"new_user:{username}")
-        while True:
-            if not self.recv_q.empty():
-                self.user_info = self.recv_q
-                break
+        self.local_info = json.loads(self.recv_q.get())                
         self.map = None
+        self.users = None
+        self._update_users()
+        self._update_map()
+
+    def _update_map(self):
+        self.send_q.put("map:-")
+        self.map = json.loads(self.recv_q.get())
+
+    def _update_users(self):
+        self.send_q.put("users:-")
+        self.users = json.loads(self.recv_q.get())
+        self.local_info = self.users[self.local_info["id"]]
+
 
     def move(self, direction: str = "forward"):
         time.sleep(0.2)
-        self.send_q.put(f"mv:{moves[direction]}")
-        while True:
-            if not self.recv_q.empty():
-                return self.recv_q.get()
+        move = MOVES[direction]
+        pos = self.local_info["location"]
+        if (pos[0] + move[0] >= len(self.map[0])) or (pos[1] + move[1] >= len(self.map)) or (pos[0] + move[0] < 0) or (pos[1] + move[1] < 0):
+            raise ValueError(f"Move in direction {direction} would cause position out side of map, Location: {pos}, Move: {move}, Map Size: ({len(self.map[0])},{len(self.map)})")
+        self.send_q.put(f"mv:{move}")
+        self.recv_q.get()
+        new_pos = [pos[0] + move[0], pos[1] + move[1]]
+        self.local_info["location"] = new_pos
+    
+    def print_map(self):
+        self._update_map()
+        for row in self.map:
+            print(row)
+    
+    def am_i_infected(self):
+        self._update_users()
+        return self.users[self.local_info["id"]]["infected"]
 
-    def get_map(self):
-        self.send_q.put("map")
-        while True:
-            if not self.recv_q.empty():
-                return self.recv_q.get()
+    def __repr__(self):
+        self._update_map()
+        base = ""
+        for row in self.map:
+            base += str(row) + "\n"
+        return base
 
-    def _get_user_info(self, id):
-        self.send_q("get_user:{id}")
-        while True:
-            if not self.recv_q.empty():
-                return self.recv_q.get()
+    @property
+    def position(self):
+        return self.local_info
+    
+    def help():
+        help_message = """
 
-    def is_infected(self, id):
-        time.sleep(0.4)
-        _user_info = self._get_user_info(id)
-        return _user_info["infected"]
+        """
+
+        
     
